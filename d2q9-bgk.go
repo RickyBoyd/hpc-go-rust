@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
     "math"
+    "syscall"
 )
 
 const NSPEEDS int = 9
@@ -34,12 +35,11 @@ func main() {
     var cells []t_speed          /* grid containing fluid densities */
     var tmp_cells []t_speed      /* scratch space */
     var obstacles []int32        /* grid indicating which cells are blocked */
-    var av_vels []float64        /* a record of the av. velocity computed for each timestep 
-    // struct timeval timstr        /* structure to hold elapsed time */
-    // struct rusage ru             /* structure to hold CPU time--system and user */
-    // tic, toc float64             /* floating point numbers to calculate elapsed wallclock time */
-    // usrtim float64               /* floating point number to record elapsed user CPU time */
-    // systim float64                /* floating point number to record elapsed system CPU time */
+    var av_vels []float64        /* a record of the av. velocity computed for each timestep*/ 
+    var timstr syscall.Timeval           /* structure to hold elapsed time */
+    var ru syscall.Rusage                /* structure to hold CPU time--system and user */
+    var usrtim float64           /* floating point number to record elapsed user CPU time */
+    var systim float64           /* floating point number to record elapsed system CPU time */
 
     /* parse the command line */
     args := os.Args
@@ -55,22 +55,28 @@ func main() {
     params = initialise(paramfile, obstaclefile, &cells, &tmp_cells, &obstacles, &av_vels);
 
     /* iterate for maxIters timesteps */
-    //gettimeofday(&timstr, NULL);
-    //tic = timstr.tv_sec + (timstr.tv_usec / 1000000.0);
+    syscall.Gettimeofday(&timstr);
+    tic := float64(timstr.Sec) + (float64(timstr.Usec) / 1000000.0);
 
     for tt := 0; tt < params.maxIters; tt++ {
         timestep(params, cells, tmp_cells, obstacles);
         av_vels[tt] = av_velocity(params, cells, obstacles);
-        fmt.Printf("==timestep: %d==\n", tt);
-        fmt.Printf("av velocity: %.12E\n", av_vels[tt]);
+        //fmt.Printf("==timestep: %d==\n", tt);
+        //fmt.Printf("av velocity: %.12E\n", av_vels[tt]);
         //fmt.Printf("tot density: %.12E\n", total_density(params, cells));
     }
-    /* write final values and free memory */
+    syscall.Gettimeofday(&timstr);
+    toc := float64(timstr.Sec) + (float64(timstr.Usec) / 1000000.0);
+    syscall.Getrusage(syscall.RUSAGE_SELF, &ru);
+    timstr = ru.Utime;
+    usrtim = float64(timstr.Sec) + (float64(timstr.Usec) / 1000000.0);
+    timstr = ru.Stime;
+    systim = float64(timstr.Sec) + (float64(timstr.Usec) / 1000000.0);
     fmt.Println("==done==");
     fmt.Printf("Reynolds number:\t\t%.12E\n", calc_reynolds(params, cells, obstacles));
-    //printf("Elapsed time:\t\t\t%.6lf (s)\n", toc - tic);
-    //printf("Elapsed user CPU time:\t\t%.6lf (s)\n", usrtim);
-    //printf("Elapsed system CPU time:\t%.6lf (s)\n", systim);
+    fmt.Printf("Elapsed time:\t\t\t%.6f (s)\n", toc - tic);
+    fmt.Printf("Elapsed user CPU time:\t\t%.6f (s)\n", usrtim);
+    fmt.Printf("Elapsed system CPU time:\t%.6f (s)\n", systim);
     write_values(params, cells, obstacles, av_vels);
 }
 
@@ -296,8 +302,18 @@ func av_velocity( params t_param, cells []t_speed, obstacles []int32 ) float64 {
     return tot_u / float64(tot_cells)
 }
 
-//int initialise(paramfile string, obstaclefile string, t_speed** cells_ptr, t_speed** tmp_cells_ptr,
-//               int** obstacles_ptr, double** av_vels_ptr) t_param
+func total_density(params t_param, cells []t_speed) float64 {
+    total := 0.0;  /* accumulator */
+
+    for ii := 0; ii < params.ny; ii++ {
+        for jj := 0; jj < params.nx; jj++ {
+            for kk := 0; kk < NSPEEDS; kk++ {
+                total += cells[ii * params.nx + jj].speeds[kk];
+            }
+        }
+    }
+    return total
+}
 
 func initialise(paramfile string, obstaclefile string, cells_ptr *[]t_speed, tmp_cells_ptr *[]t_speed, obstacles_ptr *[]int32, av_vels_ptr *[]float64) t_param {
     var message string     /* message buffer */
