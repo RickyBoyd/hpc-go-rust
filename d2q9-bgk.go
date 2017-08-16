@@ -331,38 +331,33 @@ func initialise(paramfile string, obstaclefile string, cells_ptr *[]t_speed, tmp
     defer fp.Close()
 
     /* read in the parameter values */
-    _, err = fmt.Fscanf(fp, "%d\n", &(params.nx))
-    if err != nil {
+    
+    if _, err := fmt.Fscanf(fp, "%d\n", &(params.nx)); err != nil {
         panic("could not read param file: nx")
     } 
 
-    _, err = fmt.Fscanf(fp, "%d\n", &(params.ny))
-    if err != nil {
+    
+    if _, err := fmt.Fscanf(fp, "%d\n", &(params.ny)); err != nil {
         panic("could not read param file: ny")
     }
 
-    _, err = fmt.Fscanf(fp, "%d\n", &(params.maxIters))
-    if err != nil {
+    if _, err := fmt.Fscanf(fp, "%d\n", &(params.maxIters)); err != nil {
         panic("could not read param file: maxIters")
     }
 
-    _, err = fmt.Fscanf(fp, "%d\n", &(params.reynolds_dim))
-    if err != nil {
+    if _, err := fmt.Fscanf(fp, "%d\n", &(params.reynolds_dim)); err != nil {
         panic("could not read param file: reynolds_dim")
     }
-
-    _, err = fmt.Fscanf(fp, "%f\n", &(params.density))
-    if err != nil {
+    
+    if _, err = fmt.Fscanf(fp, "%f\n", &(params.density)); err != nil {
         panic("could not read param file: density")
     }
-
-    _, err = fmt.Fscanf(fp, "%f\n", &(params.accel))
-    if err != nil {
+    
+    if _, err = fmt.Fscanf(fp, "%f\n", &(params.accel)); err != nil {
         panic("could not read param file: accel")
     }
-
-    _, err = fmt.Fscanf(fp, "%f\n", &(params.omega))
-    if err != nil {
+ 
+    if _, err = fmt.Fscanf(fp, "%f\n", &(params.omega)); err != nil {
         panic("could not read param file: omega")
     }
 
