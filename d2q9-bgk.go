@@ -85,9 +85,14 @@ func timestep(params t_param, cells []t_speed, tmp_cells []t_speed, obstacles []
     accelerate_flow(params, cells, obstacles);
     propagate(params, cells, tmp_cells);
     rebound(params, cells, tmp_cells, obstacles);
+
     wg := new(sync.WaitGroup)
-    wg.Add(1)
-    go collision(params, cells, tmp_cells, obstacles, wg);
+    num_goroutines := 4
+    chunk_size := params.ny / num_goroutines
+    for i := 0; i < num_goroutines; i++ {
+        wg.Add(1)
+        go collision(params, cells, tmp_cells, obstacles, wg, i * chunk_size, (i+1) * chunk_size);
+    } 
     wg.Wait()
 }
 
@@ -173,7 +178,7 @@ func rebound(params t_param, cells []t_speed, tmp_cells []t_speed, obstacles []i
     }
 }
 
-func collision(params t_param, cells []t_speed, tmp_cells []t_speed, obstacles []int32, wg *sync.WaitGroup) {
+func collision(params t_param, cells []t_speed, tmp_cells []t_speed, obstacles []int32, wg *sync.WaitGroup, ys int, ye int) {
     c_sq := 1.0 / 3.0; /* square of speed of sound */
     w0   := 4.0 / 9.0;  /* weighting factor */
     w1   := 1.0 / 9.0;  /* weighting factor */
@@ -185,7 +190,7 @@ func collision(params t_param, cells []t_speed, tmp_cells []t_speed, obstacles [
     ** NB the collision step is called after
     ** the propagate step and so values of interest
     ** are in the scratch-space grid */
-    for ii := 0; ii < params.ny; ii++ {
+    for ii := ys; ii < ye; ii++ {
         for jj := 0; jj < params.nx; jj++ {
             /* don't consider occupied cells */
             if obstacles[ii * params.nx + jj] == 0 {
