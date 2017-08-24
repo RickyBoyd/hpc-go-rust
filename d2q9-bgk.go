@@ -5,6 +5,7 @@ import (
 	"os"
     "math"
     "syscall"
+    "sync"
 )
 
 const NSPEEDS int = 9
@@ -84,7 +85,10 @@ func timestep(params t_param, cells []t_speed, tmp_cells []t_speed, obstacles []
     accelerate_flow(params, cells, obstacles);
     propagate(params, cells, tmp_cells);
     rebound(params, cells, tmp_cells, obstacles);
-    collision(params, cells, tmp_cells, obstacles);
+    wg := new(sync.WaitGroup)
+    wg.Add(1)
+    go collision(params, cells, tmp_cells, obstacles, wg);
+    wg.Wait()
 }
 
 func accelerate_flow(params t_param, cells []t_speed, obstacles []int32) {
@@ -169,11 +173,13 @@ func rebound(params t_param, cells []t_speed, tmp_cells []t_speed, obstacles []i
     }
 }
 
-func collision(params t_param, cells []t_speed, tmp_cells []t_speed, obstacles []int32) {
+func collision(params t_param, cells []t_speed, tmp_cells []t_speed, obstacles []int32, wg *sync.WaitGroup) {
     c_sq := 1.0 / 3.0; /* square of speed of sound */
     w0   := 4.0 / 9.0;  /* weighting factor */
     w1   := 1.0 / 9.0;  /* weighting factor */
     w2   := 1.0 / 36.0; /* weighting factor */
+
+    defer wg.Done()
 
     /* loop over the cells in the grid
     ** NB the collision step is called after
