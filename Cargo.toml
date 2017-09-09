@@ -1,0 +1,6 @@
+[package]
+name = "uob-hpc-lbm-2016"
+version = "0.1.0"
+authors = ["Ricky Boyd <ricky_boyd@hotmail.co.uk>"]
+
+[dependencies]
