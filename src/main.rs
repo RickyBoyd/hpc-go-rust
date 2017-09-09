@@ -8,9 +8,9 @@ const AVVELSFILE: &'static str = "av_vels.dat";
 
 /* struct to hold the parameter values */
 struct Param {
-    nx: i32,            /* no. of cells in x-direction */
-    ny: i32,           /* no. of cells in y-direction */
-    max_iters: i32,      /* no. of iterations */
+    nx: usize,            /* no. of cells in x-direction */
+    ny: usize,           /* no. of cells in y-direction */
+    max_iters: usize,      /* no. of iterations */
     reynolds_dim: i32,  /* dimension for Reynolds number */
     density: f64,       /* density per link */
     accel: f64,         /* density redistribution */
@@ -18,6 +18,8 @@ struct Param {
 }
 
 /* struct to hold the 'speed' values */
+
+#[derive(Clone, Copy)]
 struct Speed {
     speeds: [f64; NSPEEDS],
 }
@@ -33,8 +35,9 @@ fn main() {
     println!("Searching for {}", paramfile);
     println!("In file {}", obstaclefile);
 
-    let params = initialise(paramfile);
+    let (params, cells, tmp_cells, obstacles, av_vels) = initialise(paramfile, obstaclefile);
     println!("nx: {}", params.nx);
+
 }
 
 
@@ -42,12 +45,10 @@ fn main() {
 //                t_param* params, t_speed** cells_ptr, t_speed** tmp_cells_ptr,
 //                int** obstacles_ptr, double** av_vels_ptr)
 // {
-fn initialise(paramfile: &str) -> Param {
-  // char   message[1024];  /* message buffer */
-  // FILE*   fp;            /* file pointer */
-  // int    xx, yy;         /* generic array indices */
-  // int    blocked;        /* indicates whether a cell is blocked by an obstacle */
-  // int    retval;         /* to hold return value for checking */
+fn initialise(paramfile: &str, obstaclefile: &str) -> (Param, Vec<Speed>, Vec<Speed>, Vec<u8>, Vec<f64>) {
+    // int    xx, yy;         /* generic array indices */
+    // int    blocked;        /* indicates whether a cell is blocked by an obstacle */
+    // int    retval;         /* to hold return value for checking */
 
 
     let mut f = File::open(paramfile).expect("could not open input parameter file");
@@ -60,9 +61,9 @@ fn initialise(paramfile: &str) -> Param {
     println!("{}", contents);
     let mut lines = contents.lines();
 
-    let nx: i32 = lines.next().unwrap().parse().unwrap();
-    let ny: i32 = lines.next().unwrap().parse().unwrap();
-    let max_iters: i32 = lines.next().unwrap().parse().unwrap();
+    let nx: usize = lines.next().unwrap().parse().unwrap();
+    let ny: usize = lines.next().unwrap().parse().unwrap();
+    let max_iters: usize = lines.next().unwrap().parse().unwrap();
     let reynolds_dim: i32 = lines.next().unwrap().parse().unwrap();
     let density: f64 = lines.next().unwrap().parse().unwrap();
     let accel: f64 = lines.next().unwrap().parse().unwrap();
@@ -71,139 +72,58 @@ fn initialise(paramfile: &str) -> Param {
     let params = Param{nx, ny, max_iters, reynolds_dim, density, accel, omega};
 
 
-    return params;
+    // /* main grid */
+    //let mut cells: Vec<Speed> = Vec::with_capacity(params.ny * params.nx);
+    //let mut tmp_cells: Vec<Speed> = Vec::with_capacity(params.ny * params.nx);
+
+    let mut cells: Vec<Speed> = vec![Speed{speeds: [0.0; NSPEEDS]}; params.ny * params.nx];
+    let mut tmp_cells: Vec<Speed> = vec![Speed{speeds: [0.0; NSPEEDS]}; params.ny * params.nx];
 
 
-  // /* read in the parameter values */
-  // retval = fscanf(fp, "%d\n", &(params->nx));
+    /* initialise densities */
+    let w0 = params.density * 4.0 / 9.0;
+    let w1 = params.density      / 9.0;
+    let w2 = params.density      / 36.0;
+    println! ("Here") ;
+    for ii in 0..params.ny {
+        for jj in 0..params.nx {
+            /* centre */
+            cells[ii * params.nx + jj].speeds[0] = w0;
+            /* axis directions */
+            cells[ii * params.nx + jj].speeds[1] = w1;
+            cells[ii * params.nx + jj].speeds[2] = w1;
+            cells[ii * params.nx + jj].speeds[3] = w1;
+            cells[ii * params.nx + jj].speeds[4] = w1;
+            /* diagonals */
+            cells[ii * params.nx + jj].speeds[5] = w2;
+            cells[ii * params.nx + jj].speeds[6] = w2;
+            cells[ii * params.nx + jj].speeds[7] = w2;
+            cells[ii * params.nx + jj].speeds[8] = w2;
+        }
+    }
 
-  // if (retval != 1) die("could not read param file: nx", __LINE__, __FILE__);
+    /* the map of obstacles */
+    let mut obstacles = vec![0 as u8; (params.ny * params.nx)];
 
-  // retval = fscanf(fp, "%d\n", &(params->ny));
+    /* open the obstacle data file */
+    let mut f = File::open(obstaclefile).expect("could not open obstacle parameter file");
 
-  // if (retval != 1) die("could not read param file: ny", __LINE__, __FILE__);
+    let mut contents = String::new();
+    f.read_to_string(&mut contents)
+        .expect("something went wrong reading the obstacle file");
 
-  // retval = fscanf(fp, "%d\n", &(params->maxIters));
+    let mut lines = contents.lines();
+    for line in lines {
+        let res: Vec<u16> = line.split(" ").map(|s| s.parse().unwrap()).collect();
+        obstacles[res[1] as usize * params.nx + res[0] as usize] = res[2] as u8;
+        println!("{} {} {}", res[0], res[1], res[2]);
+    }
 
-  // if (retval != 1) die("could not read param file: maxIters", __LINE__, __FILE__);
+    /*
+     ** allocate space to hold a record of the avarage velocities computed
+     ** at each timestep
+     */
+    let mut av_vels = vec![0.0; params.max_iters];
 
-  // retval = fscanf(fp, "%d\n", &(params->reynolds_dim));
-
-  // if (retval != 1) die("could not read param file: reynolds_dim", __LINE__, __FILE__);
-
-  // retval = fscanf(fp, "%lf\n", &(params->density));
-
-  // if (retval != 1) die("could not read param file: density", __LINE__, __FILE__);
-
-  // retval = fscanf(fp, "%lf\n", &(params->accel));
-
-  // if (retval != 1) die("could not read param file: accel", __LINE__, __FILE__);
-
-  // retval = fscanf(fp, "%lf\n", &(params->omega));
-
-  // if (retval != 1) die("could not read param file: omega", __LINE__, __FILE__);
-
-  // /* and close up the file */
-  // fclose(fp);
-
-  /*
-  ** Allocate memory.
-  **
-  ** Remember C is pass-by-value, so we need to
-  ** pass pointers into the initialise function.
-  **
-  ** NB we are allocating a 1D array, so that the
-  ** memory will be contiguous.  We still want to
-  ** index this memory as if it were a (row major
-  ** ordered) 2D array, however.  We will perform
-  ** some arithmetic using the row and column
-  ** coordinates, inside the square brackets, when
-  ** we want to access elements of this array.
-  **
-  ** Note also that we are using a structure to
-  ** hold an array of 'speeds'.  We will allocate
-  ** a 1D array of these structs.
-  */
-
-  // /* main grid */
-  // *cells_ptr = (t_speed*)malloc(sizeof(t_speed) * (params->ny * params->nx));
-
-  // if (*cells_ptr == NULL) die("cannot allocate memory for cells", __LINE__, __FILE__);
-
-  // /* 'helper' grid, used as scratch space */
-  // *tmp_cells_ptr = (t_speed*)malloc(sizeof(t_speed) * (params->ny * params->nx));
-
-  // if (*tmp_cells_ptr == NULL) die("cannot allocate memory for tmp_cells", __LINE__, __FILE__);
-
-  // /* the map of obstacles */
-  // *obstacles_ptr = malloc(sizeof(int) * (params->ny * params->nx));
-
-  // if (*obstacles_ptr == NULL) die("cannot allocate column memory for obstacles", __LINE__, __FILE__);
-
-  // /* initialise densities */
-  // double w0 = params->density * 4.0 / 9.0;
-  // double w1 = params->density      / 9.0;
-  // double w2 = params->density      / 36.0;
-
-  // for (int ii = 0; ii < params->ny; ii++)
-  // {
-  //   for (int jj = 0; jj < params->nx; jj++)
-  //   {
-  //     /* centre */
-  //     (*cells_ptr)[ii * params->nx + jj].speeds[0] = w0;
-  //     /* axis directions */
-  //     (*cells_ptr)[ii * params->nx + jj].speeds[1] = w1;
-  //     (*cells_ptr)[ii * params->nx + jj].speeds[2] = w1;
-  //     (*cells_ptr)[ii * params->nx + jj].speeds[3] = w1;
-  //     (*cells_ptr)[ii * params->nx + jj].speeds[4] = w1;
-  //     /* diagonals */
-  //     (*cells_ptr)[ii * params->nx + jj].speeds[5] = w2;
-  //     (*cells_ptr)[ii * params->nx + jj].speeds[6] = w2;
-  //     (*cells_ptr)[ii * params->nx + jj].speeds[7] = w2;
-  //     (*cells_ptr)[ii * params->nx + jj].speeds[8] = w2;
-  //   }
-  // }
-
-  // /* first set all cells in obstacle array to zero */
-  // for (int ii = 0; ii < params->ny; ii++)
-  // {
-  //   for (int jj = 0; jj < params->nx; jj++)
-  //   {
-  //     (*obstacles_ptr)[ii * params->nx + jj] = 0;
-  //   }
-  // }
-
-  // /* open the obstacle data file */
-  // fp = fopen(obstaclefile, "r");
-
-  // if (fp == NULL)
-  // {
-  //   sprintf(message, "could not open input obstacles file: %s", obstaclefile);
-  //   die(message, __LINE__, __FILE__);
-  // }
-
-  // /* read-in the blocked cells list */
-  // while ((retval = fscanf(fp, "%d %d %d\n", &xx, &yy, &blocked)) != EOF)
-  // {
-  //   /* some checks */
-  //   if (retval != 3) die("expected 3 values per line in obstacle file", __LINE__, __FILE__);
-
-  //   if (xx < 0 || xx > params->nx - 1) die("obstacle x-coord out of range", __LINE__, __FILE__);
-
-  //   if (yy < 0 || yy > params->ny - 1) die("obstacle y-coord out of range", __LINE__, __FILE__);
-
-  //   if (blocked != 1) die("obstacle blocked value should be 1", __LINE__, __FILE__);
-
-  //   /* assign to array */
-  //   (*obstacles_ptr)[yy * params->nx + xx] = blocked;
-  // }
-
-  // /* and close the file */
-  // fclose(fp);
-
-  // /*
-  // ** allocate space to hold a record of the avarage velocities computed
-  // ** at each timestep
-  // */
-  // *av_vels_ptr = (double*)malloc(sizeof(double) * params->maxIters);
+    return (params, cells, tmp_cells, obstacles, av_vels);
 }
