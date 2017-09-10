@@ -32,17 +32,16 @@ fn main() {
     let paramfile = &args[1];
     let obstaclefile = &args[2];
 
-    println!("Searching for {}", paramfile);
-    println!("In file {}", obstaclefile);
+    println!("Paramfile {}", paramfile);
+    println!("Obstaclefile {}", obstaclefile);
 
     let (params, mut cells, mut tmp_cells, obstacles, mut av_vels) = initialise(paramfile, obstaclefile);
-    println!("nx: {}", params.nx);
 
-    for _ in 0..params.max_iters {
+    for tt in 0..params.max_iters {
         timestep(&params, &mut cells, &mut tmp_cells, &obstacles);
-        //av_vels[tt] = av_velocity(params, cells, obstacles);
-        //printf("==timestep: %d==\n", tt);
-        //printf("av velocity: %.12E\n", av_vels[tt]);
+        av_vels[tt] = av_velocity(&params, &cells, &obstacles);
+        //println!("==timestep: {}==", tt);
+        //println!("av velocity: {:.12}", av_vels[tt]);
         //printf("tot density: %.12E\n", total_density(params, cells));
     }
 
@@ -191,8 +190,8 @@ fn collision(params: &Param, cells: &mut Vec<Speed>, tmp_cells: &Vec<Speed>, obs
                 /* equilibrium densities */
                 let mut d_equ = [0.0; NSPEEDS];
                 /* zero velocity density: weight w0 */
-                d_equ[0] = w0 * local_density
-                   * (1.0 - u_sq / (2.0 * c_sq));
+                d_equ[0] = w0 * local_density * (1.0 - u_sq / (2.0 * c_sq));
+
                 /* axis speeds: weight w1 */
                 d_equ[1] = w1 * local_density * (1.0 + u[1] / c_sq
                                          + (u[1] * u[1]) / (2.0 * c_sq * c_sq)
@@ -231,6 +230,48 @@ fn collision(params: &Param, cells: &mut Vec<Speed>, tmp_cells: &Vec<Speed>, obs
     }
 }
 
+
+fn calc_reynolds(params: &Param, cells: &Vec<Speed>, obstacles: &Vec<bool>) -> f64 {
+    let viscosity = 1.0 / 6.0 * (2.0 / params.omega - 1.0);
+
+    av_velocity(params, cells, obstacles) * (params.reynolds_dim as f64) / viscosity
+}
+
+fn av_velocity(params: &Param, cells: &Vec<Speed>, obstacles: &Vec<bool>) -> f64 {
+    let mut tot_cells = 0;  /* no. of cells used in calculation */
+    /* initialise */
+    let mut tot_u = 0.0;
+
+    /* loop over all non-blocked cells */
+    for ii in 0..params.ny {
+        for jj in 0..params.nx {
+            /* ignore occupied cells */
+            if !obstacles[ii * params.nx + jj] {
+                /* local density total */
+                let mut local_density = 0.0;
+
+                for kk in 0..NSPEEDS {
+                    local_density += cells[ii * params.nx + jj].speeds[kk];
+                }
+
+                /* x-component of velocity */
+                let u_x = (cells[ii * params.nx + jj].speeds[1] + cells[ii * params.nx + jj].speeds[5] + 
+                        cells[ii * params.nx + jj].speeds[8] - (cells[ii * params.nx + jj].speeds[3] + 
+                        cells[ii * params.nx + jj].speeds[6] + cells[ii * params.nx + jj].speeds[7])) / local_density;
+                /* compute y velocity component */
+                let u_y = (cells[ii * params.nx + jj].speeds[2] + cells[ii * params.nx + jj].speeds[5] + 
+                        cells[ii * params.nx + jj].speeds[6] - (cells[ii * params.nx + jj].speeds[4] + 
+                        cells[ii * params.nx + jj].speeds[7] + cells[ii * params.nx + jj].speeds[8])) / local_density;
+                /* accumulate the norm of x- and y- velocity components */
+                tot_u += ((u_x * u_x) + (u_y * u_y)).sqrt();
+                /* increase counter of inspected cells */
+                tot_cells += 1;
+            }
+        }
+    }
+    tot_u / tot_cells as f64
+}
+
 fn initialise(paramfile: &str, obstaclefile: &str) -> (Param, Vec<Speed>, Vec<Speed>, Vec<bool>, Vec<f64>) {
 
     let mut f = File::open(paramfile).expect("could not open input parameter file");
@@ -266,7 +307,6 @@ fn initialise(paramfile: &str, obstaclefile: &str) -> (Param, Vec<Speed>, Vec<Sp
     let w0 = params.density * 4.0 / 9.0;
     let w1 = params.density      / 9.0;
     let w2 = params.density      / 36.0;
-    println! ("Here") ;
     for ii in 0..params.ny {
         for jj in 0..params.nx {
             /* centre */
@@ -298,7 +338,6 @@ fn initialise(paramfile: &str, obstaclefile: &str) -> (Param, Vec<Speed>, Vec<Sp
     for line in lines {
         let res: Vec<u16> = line.split(" ").map(|s| s.parse().unwrap()).collect();
         obstacles[res[1] as usize * params.nx + res[0] as usize] = true;
-        println!("{} {} {}", res[0], res[1], res[2]);
     }
 
     /*
