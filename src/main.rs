@@ -42,7 +42,7 @@ fn main() {
         av_vels[tt] = av_velocity(&params, &cells, &obstacles);
         //println!("==timestep: {}==", tt);
         //println!("av velocity: {:.12}", av_vels[tt]);
-        //printf("tot density: %.12E\n", total_density(params, cells));
+        //printf("tot density: {:.12}", total_density(params, cells));
     }
 
     //gettimeofday(&timstr, NULL);
@@ -54,12 +54,12 @@ fn main() {
     //systim = timstr.tv_sec + (timstr.tv_usec / 1000000.0);
 
     /* write final values and free memory */
-    //printf("==done==\n");
-    //printf("Reynolds number:\t\t%.12E\n", calc_reynolds(params, cells, obstacles));
+    println!("==done==");
+    println!("Reynolds number:\t\t{:.12}", calc_reynolds(&params, &cells, &obstacles));
     //printf("Elapsed time:\t\t\t%.6lf (s)\n", toc - tic);
     //printf("Elapsed user CPU time:\t\t%.6lf (s)\n", usrtim);
     //printf("Elapsed system CPU time:\t%.6lf (s)\n", systim);
-    //write_values(params, cells, obstacles, av_vels);
+    write_values(&params, &cells, &obstacles, &av_vels);
 }
 
 fn timestep(params: &Param, cells: &mut Vec<Speed>, tmp_cells: &mut Vec<Speed>, obstacles: &Vec<bool>) {
@@ -270,6 +270,58 @@ fn av_velocity(params: &Param, cells: &Vec<Speed>, obstacles: &Vec<bool>) -> f64
         }
     }
     tot_u / tot_cells as f64
+}
+
+fn write_values(params: &Param, cells: &Vec<Speed>, obstacles: &Vec<bool>, av_vels: &Vec<f64>) {
+    let c_sq: f64 = 1.0 / 3.0;    /* sq. of speed of sound */
+    let mut local_density: f64;         /* per grid cell sum of densities */
+    let mut pressure: f64;              /* fluid pressure in grid cell */
+    let mut u_x: f64;                   /* x-component of velocity in grid cell */
+    let mut u_y: f64;                   /* y-component of velocity in grid cell */
+    let mut u: f64;                     /* norm--root of summed squares--of u_x and u_y */
+
+    let mut f = File::create(FINALSTATEFILE).expect("could not open final state file");
+
+
+    for ii in 0..params.ny {
+        for jj in 0..params.nx {
+            /* an occupied cell */
+            if obstacles[ii * params.nx + jj] {
+                u_x = 0.0;
+                u_y = 0.0;
+                u = 0.0;
+                pressure = params.density * c_sq;
+            } else {
+                local_density = 0.0;
+
+                for kk in 0..NSPEEDS {
+                    local_density += cells[ii * params.nx + jj].speeds[kk];
+                }
+
+                /* compute x velocity component */
+                u_x = (cells[ii * params.nx + jj].speeds[1] + cells[ii * params.nx + jj].speeds[5] + 
+                       cells[ii * params.nx + jj].speeds[8] - (cells[ii * params.nx + jj].speeds[3] + 
+                       cells[ii * params.nx + jj].speeds[6] + cells[ii * params.nx + jj].speeds[7])) / local_density;
+                /* compute y velocity component */
+                u_y = (cells[ii * params.nx + jj].speeds[2] + cells[ii * params.nx + jj].speeds[5] + 
+                       cells[ii * params.nx + jj].speeds[6] - (cells[ii * params.nx + jj].speeds[4] + 
+                       cells[ii * params.nx + jj].speeds[7] + cells[ii * params.nx + jj].speeds[8])) / local_density;
+                /* compute norm of velocity */
+                u = ((u_x * u_x) + (u_y * u_y)).sqrt();
+                /* compute pressure */
+                pressure = local_density * c_sq;
+            }
+
+            /* write to file */
+            write!(f, "{} {} {:.12} {:.12} {:.12} {:.12} {}\n", jj, ii, u_x, u_y, u, pressure, obstacles[ii * params.nx + jj]);
+        }
+    }
+
+    let mut f = File::create(AVVELSFILE).expect("could not open av vels file");
+
+    for ii in 0..params.max_iters {
+        write!(f, "{}:\t{:.12}\n", ii, av_vels[ii]);
+    }
 }
 
 fn initialise(paramfile: &str, obstaclefile: &str) -> (Param, Vec<Speed>, Vec<Speed>, Vec<bool>, Vec<f64>) {
